@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\MDreader\Services\MarkdownFormattingService.cs" Link="Services\MarkdownFormattingService.cs" />
+    <Compile Include="..\MDreader\Services\MarkdownDocumentService.cs" Link="Services\MarkdownDocumentService.cs" />
+    <Compile Include="..\MDreader\Services\MarkdownRenderService.cs" Link="Services\MarkdownRenderService.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="0.40.0" />
+  </ItemGroup>
+</Project>

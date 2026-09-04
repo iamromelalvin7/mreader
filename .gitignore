@@ -1,0 +1,9 @@
+.vs/
+**/bin/
+**/obj/
+MDreader/publish/
+MDreader/installer/Output/
+**/*.WebView2/
+*.user
+*.suo
+*.tmp

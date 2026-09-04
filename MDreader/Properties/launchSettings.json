@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "MDreader (Package)": {
+      "commandName": "MsixPackage"
+    }
+  }
+}

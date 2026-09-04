@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="MDreader.Views.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="MDreader">
+
+    <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
+
+    <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,Auto,*,Auto" SizeChanged="RootGrid_SizeChanged" AllowDrop="True" DragOver="RootGrid_DragOver" Drop="RootGrid_Drop">
+        <Grid.Resources>
+            <Style x:Key="FormatButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="42" />
+                <Setter Property="Height" Value="38" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="FormatGlyphStyle" TargetType="TextBlock">
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+        </Grid.Resources>
+
+        <CommandBar Grid.Row="0" HorizontalAlignment="Stretch" DefaultLabelPosition="Right">
+            <AppBarButton x:Name="NewButton" Icon="Document" Label="New" Click="NewButton_Click">
+                <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="N" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
+            <AppBarButton x:Name="OpenButton" Icon="OpenFile" Label="Open" Click="OpenButton_Click">
+                <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="O" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
+            <AppBarButton x:Name="SaveButton" Icon="Save" Label="Save" Click="SaveButton_Click">
+                <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="S" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
+            <AppBarButton x:Name="RecentButton" Icon="Clock" Label="Recent">
+                <AppBarButton.Flyout><MenuFlyout x:Name="RecentFilesFlyout" Opening="RecentFilesFlyout_Opening" /></AppBarButton.Flyout>
+            </AppBarButton>
+            <AppBarSeparator />
+            <AppBarButton x:Name="FindButton" Icon="Find" Label="Find" Click="FindButton_Click">
+                <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="F" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
+            <AppBarButton Icon="Edit" Label="Format">
+                <AppBarButton.Flyout>
+                    <MenuFlyout>
+                        <MenuFlyoutItem Text="Bold" Click="BoldButton_Click" KeyboardAcceleratorTextOverride="Ctrl+B" />
+                        <MenuFlyoutItem Text="Italic" Click="ItalicButton_Click" KeyboardAcceleratorTextOverride="Ctrl+I" />
+                        <MenuFlyoutItem Text="Underline" Click="UnderlineButton_Click" KeyboardAcceleratorTextOverride="Ctrl+U" />
+                        <MenuFlyoutItem Text="Strikethrough" Click="StrikethroughButton_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Heading 1" Click="H1Button_Click" />
+                        <MenuFlyoutItem Text="Heading 2" Click="H2Button_Click" />
+                        <MenuFlyoutItem Text="Heading 3" Click="H3Button_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Bulleted list" Click="BulletedListButton_Click" />
+                        <MenuFlyoutItem Text="Numbered list" Click="NumberedListButton_Click" />
+                        <MenuFlyoutItem Text="Task list" Click="TaskListButton_Click" />
+                        <MenuFlyoutItem Text="Blockquote" Click="BlockquoteButton_Click" />
+                        <MenuFlyoutItem Text="Inline code" Click="InlineCodeButton_Click" />
+                        <MenuFlyoutItem Text="Code block" Click="CodeBlockButton_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Link" Click="LinkButton_Click" />
+                        <MenuFlyoutItem Text="Image…" Click="ImageButton_Click" />
+                        <MenuFlyoutItem Text="Table" Click="TableButton_Click" />
+                        <MenuFlyoutItem Text="Horizontal rule" Click="HorizontalRuleButton_Click" />
+                    </MenuFlyout>
+                </AppBarButton.Flyout>
+            </AppBarButton>
+            <AppBarToggleButton x:Name="OutlineToggle" Icon="OutlineStar" Label="Outline" IsChecked="True" Click="OutlineToggle_Click" />
+            <AppBarToggleButton x:Name="PreviewToggle" Icon="View" Label="Preview" IsChecked="True" Click="PreviewToggle_Click">
+                <AppBarToggleButton.KeyboardAccelerators><KeyboardAccelerator Key="P" Modifiers="Control,Shift" /></AppBarToggleButton.KeyboardAccelerators>
+            </AppBarToggleButton>
+            <AppBarToggleButton x:Name="FocusModeToggle" Icon="FullScreen" Label="Focus" Click="FocusModeToggle_Click" />
+
+            <CommandBar.SecondaryCommands>
+                <AppBarButton x:Name="SaveAsButton" Icon="SaveLocal" Label="Save As" Click="SaveAsButton_Click">
+                    <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="S" Modifiers="Control,Shift" /></AppBarButton.KeyboardAccelerators>
+                </AppBarButton>
+                <AppBarButton Icon="NewWindow" Label="New window" Click="NewWindowButton_Click" />
+                <AppBarSeparator />
+                <AppBarButton Icon="Pictures" Label="Insert image…" Click="ImageButton_Click" />
+                <AppBarButton Icon="Bullets" Label="Insert table of contents" Click="TableOfContentsButton_Click" />
+                <AppBarSeparator />
+                <AppBarButton Icon="Page" Label="Export HTML…" Click="ExportHtmlButton_Click" />
+                <AppBarButton Icon="Print" Label="Export PDF…" Click="ExportPdfButton_Click" />
+                <AppBarButton Icon="Copy" Label="Copy rendered HTML" Click="CopyHtmlButton_Click" />
+                <AppBarSeparator />
+                <AppBarToggleButton x:Name="WordWrapToggle" Icon="AlignLeft" Label="Word wrap" IsChecked="True" Click="WordWrapToggle_Click" />
+                <AppBarButton Icon="View" Label="Theme">
+                    <AppBarButton.Flyout>
+                        <MenuFlyout>
+                            <RadioMenuFlyoutItem x:Name="SystemThemeItem" Text="Use system theme" GroupName="Theme" IsChecked="True" Click="SystemThemeItem_Click" />
+                            <RadioMenuFlyoutItem x:Name="LightThemeItem" Text="Light" GroupName="Theme" Click="LightThemeItem_Click" />
+                            <RadioMenuFlyoutItem x:Name="DarkThemeItem" Text="Dark" GroupName="Theme" Click="DarkThemeItem_Click" />
+                        </MenuFlyout>
+                    </AppBarButton.Flyout>
+                </AppBarButton>
+            </CommandBar.SecondaryCommands>
+        </CommandBar>
+
+        <Border x:Name="FindBar" Grid.Row="1" Visibility="Collapsed" BorderThickness="0,1,0,1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Padding="12,8">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollBarVisibility="Disabled">
+            <Grid MinWidth="780" ColumnDefinitions="*,Auto,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                <TextBox x:Name="FindTextBox" Grid.Column="0" PlaceholderText="Find" TextChanged="FindTextBox_TextChanged" AutomationProperties.Name="Find text" />
+                <TextBlock Grid.Column="1" Text="Replace" VerticalAlignment="Center" />
+                <TextBox x:Name="ReplaceTextBox" Grid.Column="2" PlaceholderText="Replacement" AutomationProperties.Name="Replacement text" />
+                <CheckBox x:Name="MatchCaseCheckBox" Grid.Column="3" Content="Match case" VerticalAlignment="Center" />
+                <Button Grid.Column="4" Content="Previous" Click="FindPreviousButton_Click" />
+                <Button Grid.Column="5" Content="Next" Click="FindNextButton_Click" />
+                <Button Grid.Column="6" Content="Replace" Click="ReplaceButton_Click" />
+                <Button Grid.Column="7" Content="Replace all" Click="ReplaceAllButton_Click" />
+            </Grid>
+            </ScrollViewer>
+        </Border>
+
+        <InfoBar x:Name="NotificationBar" Grid.Row="2" IsOpen="False" IsClosable="True" Margin="8,4" />
+
+        <Grid x:Name="WorkspaceGrid" Grid.Row="3" ColumnDefinitions="Auto,*,Auto,*,Auto">
+            <Border x:Name="OutlinePane" Grid.Column="0" Width="220" BorderThickness="0,0,1,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <Grid RowDefinitions="Auto,*" Padding="8">
+                    <TextBlock Text="DOCUMENT OUTLINE" Style="{StaticResource CaptionTextBlockStyle}" Margin="8,4,8,8" />
+                    <ListView x:Name="OutlineList" Grid.Row="1" SelectionChanged="OutlineList_SelectionChanged" AutomationProperties.Name="Document headings">
+                        <ListView.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Text}" /></DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Column="1">
+                <TextBox
+                    x:Name="RawEditor"
+                    FontFamily="Cascadia Mono, Consolas, Courier New"
+                    FontSize="14"
+                    Padding="12,8,12,8"
+                    BorderThickness="0"
+                    AcceptsReturn="True"
+                    TextWrapping="Wrap"
+                    IsSpellCheckEnabled="False"
+                    IsTextPredictionEnabled="False"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    TextChanged="RawEditor_TextChanged"
+                    SelectionChanged="RawEditor_SelectionChanged"
+                    KeyDown="RawEditor_KeyDown"
+                    AutomationProperties.Name="Markdown editor" />
+                <StackPanel x:Name="WelcomePanel" IsHitTestVisible="False" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" Opacity="0.55">
+                    <FontIcon Glyph="&#xE8A5;" FontSize="36" />
+                    <TextBlock Text="Start writing Markdown" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Open a file or press Ctrl+N for a blank document" />
+                </StackPanel>
+            </Grid>
+
+            <Button x:Name="ColumnSplitter" Grid.Column="2" Width="8" Padding="0" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Stretch"
+                    PointerPressed="ColumnSplitter_PointerPressed" PointerMoved="ColumnSplitter_PointerMoved" PointerReleased="ColumnSplitter_PointerReleased" KeyDown="ColumnSplitter_KeyDown"
+                    AutomationProperties.Name="Resize editor and preview panes" ToolTipService.ToolTip="Drag or use Left/Right arrows to resize">
+                <Rectangle Width="1" VerticalAlignment="Stretch" Fill="{ThemeResource CardStrokeColorDefaultBrush}" />
+            </Button>
+
+            <Border x:Name="PreviewPane" Grid.Column="3" BorderThickness="1,0,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                <Grid>
+                    <WebView2 x:Name="PreviewView" AutomationProperties.Name="Rendered Markdown preview" />
+                    <TextBlock x:Name="PreviewUnavailableText" Visibility="Collapsed" TextWrapping="Wrap" Margin="16" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                    <Button x:Name="ExpandPreviewButton" Click="ExpandPreviewButton_Click" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="8" CornerRadius="4"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                            ToolTipService.ToolTip="Expand preview" AutomationProperties.Name="Expand preview">
+                        <FontIcon x:Name="ExpandPreviewGlyph" Glyph="&#xE740;" FontSize="14" />
+                    </Button>
+                </Grid>
+            </Border>
+
+            <Border x:Name="FormattingPane" Grid.Column="4" Width="200" BorderThickness="1,0,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="FormattingPanel" Padding="10" Spacing="8">
+                        <TextBlock Text="FORMAT" Style="{StaticResource CaptionTextBlockStyle}" Margin="4,0" />
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="BoldButton_Click" ToolTipService.ToolTip="Bold (Ctrl+B)" AutomationProperties.Name="Bold"><SymbolIcon Symbol="Bold" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="ItalicButton_Click" ToolTipService.ToolTip="Italic (Ctrl+I)" AutomationProperties.Name="Italic"><SymbolIcon Symbol="Italic" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="UnderlineButton_Click" ToolTipService.ToolTip="Underline using safe HTML (Ctrl+U)" AutomationProperties.Name="Underline"><TextBlock Text="U" Style="{StaticResource FormatGlyphStyle}" TextDecorations="Underline" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="StrikethroughButton_Click" ToolTipService.ToolTip="Strikethrough" AutomationProperties.Name="Strikethrough"><TextBlock Text="S" Style="{StaticResource FormatGlyphStyle}" TextDecorations="Strikethrough" /></Button>
+                        </StackPanel>
+                        <TextBlock Text="HEADINGS" Style="{StaticResource CaptionTextBlockStyle}" Margin="4,4,0,0" />
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="H1Button_Click" AutomationProperties.Name="Heading 1"><TextBlock Text="H1" Style="{StaticResource FormatGlyphStyle}" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="H2Button_Click" AutomationProperties.Name="Heading 2"><TextBlock Text="H2" Style="{StaticResource FormatGlyphStyle}" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="H3Button_Click" AutomationProperties.Name="Heading 3"><TextBlock Text="H3" Style="{StaticResource FormatGlyphStyle}" /></Button>
+                        </StackPanel>
+                        <TextBlock Text="LISTS" Style="{StaticResource CaptionTextBlockStyle}" Margin="4,4,0,0" />
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="BulletedListButton_Click" AutomationProperties.Name="Bulleted list"><SymbolIcon Symbol="Bullets" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="NumberedListButton_Click" AutomationProperties.Name="Numbered list"><TextBlock Text="1." Style="{StaticResource FormatGlyphStyle}" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="TaskListButton_Click" AutomationProperties.Name="Task list"><TextBlock Text="☑" Style="{StaticResource FormatGlyphStyle}" FontSize="17" /></Button>
+                        </StackPanel>
+                        <TextBlock Text="BLOCKS" Style="{StaticResource CaptionTextBlockStyle}" Margin="4,4,0,0" />
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="BlockquoteButton_Click" AutomationProperties.Name="Quote"><TextBlock Text="“" Style="{StaticResource FormatGlyphStyle}" FontSize="20" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="InlineCodeButton_Click" AutomationProperties.Name="Inline code"><TextBlock Text="&lt;/&gt;" Style="{StaticResource FormatGlyphStyle}" FontFamily="Cascadia Mono" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="CodeBlockButton_Click" AutomationProperties.Name="Code block"><TextBlock Text="{}{ }" Style="{StaticResource FormatGlyphStyle}" FontFamily="Cascadia Mono" /></Button>
+                        </StackPanel>
+                        <TextBlock Text="INSERT" Style="{StaticResource CaptionTextBlockStyle}" Margin="4,4,0,0" />
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="LinkButton_Click" AutomationProperties.Name="Link"><SymbolIcon Symbol="Link" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="ImageButton_Click" AutomationProperties.Name="Image"><SymbolIcon Symbol="Pictures" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="HorizontalRuleButton_Click" AutomationProperties.Name="Horizontal rule"><TextBlock Text="—" Style="{StaticResource FormatGlyphStyle}" FontSize="20" /></Button>
+                            <Button Style="{StaticResource FormatButtonStyle}" Click="TableButton_Click" AutomationProperties.Name="Table"><TextBlock Text="▦" Style="{StaticResource FormatGlyphStyle}" FontSize="18" /></Button>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="4" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Padding="12,5">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto" ColumnSpacing="16">
+                <TextBlock x:Name="PositionStatusText" Grid.Column="0" Text="Ln 1, Col 1" />
+                <TextBlock x:Name="WordCountStatusText" Grid.Column="1" Text="0 words" />
+                <TextBlock x:Name="FileStatusText" Grid.Column="2" Text="UTF-8 · LF" />
+                <TextBlock x:Name="FindStatusText" Grid.Column="3" HorizontalAlignment="Center" />
+                <Button Grid.Column="4" Content="−" Width="28" Height="26" Padding="0" Click="ZoomOutButton_Click" AutomationProperties.Name="Zoom out" />
+                <TextBlock x:Name="ZoomStatusText" Grid.Column="5" Text="100%" VerticalAlignment="Center" />
+                <Button Grid.Column="6" Content="+" Width="28" Height="26" Padding="0" Click="ZoomInButton_Click" AutomationProperties.Name="Zoom in" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
