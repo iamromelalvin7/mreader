@@ -10,7 +10,10 @@
 
     <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
 
-    <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,Auto,*,Auto" SizeChanged="RootGrid_SizeChanged" AllowDrop="True" DragOver="RootGrid_DragOver" Drop="RootGrid_Drop">
+    <!-- KeyboardAcceleratorPlacementMode="Hidden": WinUI otherwise shows the window-wide Ctrl+E as a
+         floating tooltip wherever the pointer rests. The shortcut is advertised in the status bar instead. -->
+    <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,Auto,*,Auto" SizeChanged="RootGrid_SizeChanged" AllowDrop="True" DragOver="RootGrid_DragOver" Drop="RootGrid_Drop"
+          KeyboardAcceleratorPlacementMode="Hidden">
         <Grid.KeyboardAccelerators>
             <!-- Window-wide so it also works while focus is inside the WebView2 preview. -->
             <KeyboardAccelerator Key="E" Modifiers="Control" Invoked="ToggleReadEdit_Invoked" />
@@ -230,14 +233,16 @@
         </Grid>
 
         <Border Grid.Row="4" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Padding="12,5">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto" ColumnSpacing="16">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="16">
                 <TextBlock x:Name="PositionStatusText" Grid.Column="0" Text="Ln 1, Col 1" />
                 <TextBlock x:Name="WordCountStatusText" Grid.Column="1" Text="0 words" />
                 <TextBlock x:Name="FileStatusText" Grid.Column="2" Text="UTF-8 · LF" />
                 <TextBlock x:Name="FindStatusText" Grid.Column="3" HorizontalAlignment="Center" />
-                <Button Grid.Column="4" Content="−" Width="28" Height="26" Padding="0" Click="ZoomOutButton_Click" AutomationProperties.Name="Zoom out" />
-                <TextBlock x:Name="ZoomStatusText" Grid.Column="5" Text="100%" VerticalAlignment="Center" />
-                <Button Grid.Column="6" Content="+" Width="28" Height="26" Padding="0" Click="ZoomInButton_Click" AutomationProperties.Name="Zoom in" />
+                <!-- Current view mode + the Ctrl+E hint; text set in UpdateAdaptivePanes. -->
+                <TextBlock x:Name="ModeStatusText" Grid.Column="4" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Button Grid.Column="5" Content="−" Width="28" Height="26" Padding="0" Click="ZoomOutButton_Click" AutomationProperties.Name="Zoom out" />
+                <TextBlock x:Name="ZoomStatusText" Grid.Column="6" Text="100%" VerticalAlignment="Center" />
+                <Button Grid.Column="7" Content="+" Width="28" Height="26" Padding="0" Click="ZoomInButton_Click" AutomationProperties.Name="Zoom in" />
             </Grid>
         </Border>
     </Grid>

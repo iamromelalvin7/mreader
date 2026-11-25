@@ -694,6 +694,9 @@ public sealed partial class MainWindow : Window
         ExpandPreviewLabel.Text = reading ? "Edit" : "Read";
         string tip = reading ? "Show Markdown source (Ctrl+E)" : "Read full width (Ctrl+E)";
         ToolTipService.SetToolTip(ExpandPreviewButton, tip);
+        ModeStatusText.Text = reading ? "Reading · Ctrl+E to edit"
+            : _viewMode == ViewMode.Split ? "Split · Ctrl+E to read"
+            : "Editing · Ctrl+E to read";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ExpandPreviewButton, tip);
 
         if (previewVisible && !previewWasVisible) _ = RenderPreviewAsync();
