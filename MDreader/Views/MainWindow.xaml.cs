@@ -23,6 +23,9 @@ public sealed partial class MainWindow : Window
 {
     private enum SaveDecision { Save, Discard, Cancel }
 
+    /// <summary>Read = rendered preview only, Split = source + preview, Edit = source only.</summary>
+    private enum ViewMode { Read, Split, Edit }
+
     private readonly DocumentState _document = new();
     private readonly DispatcherTimer _previewRenderTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
     private readonly DispatcherTimer _outlineTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
@@ -32,8 +35,11 @@ public sealed partial class MainWindow : Window
     private bool _suppressDirty;
     private bool _webViewReady;
     private bool _allowNextPreviewNavigation;
+    private ViewMode _viewMode = ViewMode.Split;
+    // Where Ctrl+E and the preview's corner button go back to when leaving Read mode.
+    private ViewMode _lastSourceMode = ViewMode.Split;
+    // Derived from _viewMode/_focusMode in UpdateAdaptivePanes; gates preview rendering work.
     private bool _previewVisible = true;
-    private bool _previewExpanded;
     private bool _focusMode;
     private bool _allowClose;
     private bool _closeDialogOpen;
@@ -42,8 +48,9 @@ public sealed partial class MainWindow : Window
     private double _splitterDragStartEditorWidth;
     private double _splitterDragStartPreviewWidth;
     private int _previewRenderVersion;
-    private GridLength _savedEditorWidthBeforeExpand = new(1, GridUnitType.Star);
-    private GridLength _savedPreviewWidthBeforeExpand = new(1, GridUnitType.Star);
+    // WinUI's TextBox normalizes every line break to a bare "\r" internally. Remember what the file
+    // on disk used so Save writes it back unchanged instead of converting the file to CR-only endings.
+    private string _lineEnding = "\n";
     private GridLength _lastEditorWidth = new(1, GridUnitType.Star);
     private GridLength _lastPreviewWidth = new(1, GridUnitType.Star);
     private double _previewScrollRatio;
@@ -136,6 +143,21 @@ public sealed partial class MainWindow : Window
             PreviewView.CoreWebView2.Settings.IsPasswordAutosaveEnabled = false;
             PreviewView.CoreWebView2.Settings.IsGeneralAutofillEnabled = false;
             PreviewView.CoreWebView2.NavigationStarting += PreviewView_NavigationStarting;
+            // Bundled KaTeX (JS, CSS, fonts) for offline math rendering. A fixed second host,
+            // separate from the per-document "mdreader.local" mapping, so it never moves.
+            string katexFolder = Path.Combine(AppContext.BaseDirectory, "Assets", "katex");
+            if (Directory.Exists(katexFolder))
+                PreviewView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    MarkdownRenderService.MathAssetHost, katexFolder, CoreWebView2HostResourceAccessKind.Allow);
+            // When the preview has keyboard focus, XAML KeyboardAccelerators never see the keys
+            // (WebView2 is its own input surface), so forward Ctrl+E from inside the page.
+            await PreviewView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                "document.addEventListener('keydown', e => { if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'e') { e.preventDefault(); window.chrome.webview.postMessage('toggle-read-edit'); } });");
+            PreviewView.CoreWebView2.WebMessageReceived += (_, args) =>
+            {
+                if (args.TryGetWebMessageAsString() == "toggle-read-edit")
+                    DispatcherQueue.TryEnqueue(ToggleReadEdit);
+            };
             _webViewReady = true;
             PreviewUnavailableText.Visibility = Visibility.Collapsed;
             UpdatePreviewFolderMapping();
@@ -255,7 +277,7 @@ public sealed partial class MainWindow : Window
     private void RawEditor_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (!_suppressDirty) _document.MarkDirty();
-        WelcomePanel.Visibility = string.IsNullOrEmpty(RawEditor.Text) ? Visibility.Visible : Visibility.Collapsed;
+        WelcomePanel.Visibility = _viewMode != ViewMode.Read && string.IsNullOrEmpty(RawEditor.Text) ? Visibility.Visible : Visibility.Collapsed;
         QueueDocumentRefresh();
     }
 
@@ -302,9 +324,25 @@ public sealed partial class MainWindow : Window
     private void OutlineList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (OutlineList.SelectedItem is not HeadingInfo heading) return;
+        if (_viewMode == ViewMode.Read)
+        {
+            // No caret to move in Read mode: scroll the rendered page to the matching heading instead.
+            ScrollPreviewToHeading(OutlineList.SelectedIndex);
+            return;
+        }
         RawEditor.SelectionStart = Math.Min(heading.CharacterIndex, RawEditor.Text.Length);
         RawEditor.SelectionLength = 0;
         RawEditor.Focus(FocusState.Programmatic);
+    }
+
+    private async void ScrollPreviewToHeading(int headingIndex)
+    {
+        if (!_webViewReady || headingIndex < 0) return;
+        // The outline lists ATX (#) headings in document order, which matches the order of
+        // rendered <h1>-<h6> elements (it skips fenced code, as Markdig does).
+        string script = $"(() => {{ const h = document.querySelectorAll('h1,h2,h3,h4,h5,h6')[{headingIndex}]; if (h) h.scrollIntoView({{behavior:'smooth', block:'start'}}); }})()";
+        try { await PreviewView.CoreWebView2.ExecuteScriptAsync(script); }
+        catch { /* Preview may be mid-navigation; the user can click again. */ }
     }
 
     private void UpdateTitle()
@@ -331,7 +369,8 @@ public sealed partial class MainWindow : Window
         PositionStatusText.Text = $"Ln {line}, Col {column}";
         int words = MarkdownDocumentService.CountWords(RawEditor.Text);
         WordCountStatusText.Text = $"{words:N0} {(words == 1 ? "word" : "words")}";
-        FileStatusText.Text = $"UTF-8 · {MarkdownDocumentService.DetectLineEndings(RawEditor.Text)}";
+        // Report the document's on-disk line ending, not the TextBox's internal "\r" normalization.
+        FileStatusText.Text = $"UTF-8 · {(_lineEnding == "\r\n" ? "CRLF" : _lineEnding == "\r" ? "CR" : "LF")}";
         ZoomStatusText.Text = $"{Math.Round(RawEditor.FontSize / 14d * 100):N0}%";
     }
 
@@ -341,10 +380,12 @@ public sealed partial class MainWindow : Window
         _suppressDirty = true;
         RawEditor.Text = string.Empty;
         _suppressDirty = false;
+        _lineEnding = "\n";
         _document.Reset();
         RecoveryService.Clear();
         UpdateTitle();
         QueueDocumentRefresh();
+        if (_viewMode == ViewMode.Read) SetViewMode(_lastSourceMode, remember: false); // a new document is for writing
         RawEditor.Focus(FocusState.Programmatic);
     }
 
@@ -364,6 +405,7 @@ public sealed partial class MainWindow : Window
         try
         {
             string text = await FileService.ReadTextAsync(path);
+            _lineEnding = MarkdownDocumentService.DetectLineEndings(text) switch { "CRLF" => "\r\n", "CR" => "\r", _ => "\n" };
             _suppressDirty = true;
             RawEditor.Text = text;
             _suppressDirty = false;
@@ -376,6 +418,8 @@ public sealed partial class MainWindow : Window
             UpdatePreviewFolderMapping();
             UpdateTitle();
             QueueDocumentRefresh();
+            // Opening a file (double-click, Open, Recent, drag-drop) always shows it rendered first.
+            SetViewMode(ViewMode.Read, remember: false);
         }
         catch (Exception ex) { ShowError("Could not open file", ex); }
     }
@@ -406,7 +450,7 @@ public sealed partial class MainWindow : Window
                 if (result != ContentDialogResult.Primary) return false;
             }
 
-            await FileService.WriteTextAsync(_document.CurrentFilePath, RawEditor.Text);
+            await FileService.WriteTextAsync(_document.CurrentFilePath, TextForDisk());
             _document.LastKnownWriteTimeUtc = FileService.GetLastWriteTimeUtc(_document.CurrentFilePath);
             _document.MarkClean();
             RecoveryService.Clear();
@@ -428,7 +472,7 @@ public sealed partial class MainWindow : Window
             string suggested = _document.CurrentFileName == "Untitled" ? "Untitled.md" : _document.CurrentFileName;
             string? path = await FileService.PickSaveFilePathAsync(this, suggested);
             if (path is null) return false;
-            await FileService.WriteTextAsync(path, RawEditor.Text);
+            await FileService.WriteTextAsync(path, TextForDisk());
             _document.CurrentFilePath = path;
             _document.LastKnownWriteTimeUtc = FileService.GetLastWriteTimeUtc(path);
             _document.MarkClean();
@@ -446,6 +490,10 @@ public sealed partial class MainWindow : Window
             return false;
         }
     }
+
+    /// <summary>The editor text with every line break converted back to the document's own line ending.</summary>
+    private string TextForDisk() =>
+        System.Text.RegularExpressions.Regex.Replace(RawEditor.Text, "\r\n|\r|\n", _lineEnding);
 
     private async Task<bool> CanReplaceDocumentAsync()
     {
@@ -520,23 +568,53 @@ public sealed partial class MainWindow : Window
         else RecoveryService.Clear();
     }
 
-    private void PreviewToggle_Click(object sender, RoutedEventArgs e) => SetPreviewMode(PreviewToggle.IsChecked == true);
+    private void ReadModeToggle_Click(object sender, RoutedEventArgs e) => SetViewMode(ViewMode.Read);
+    private void SplitModeToggle_Click(object sender, RoutedEventArgs e) => SetViewMode(ViewMode.Split);
+    private void EditModeToggle_Click(object sender, RoutedEventArgs e) => SetViewMode(ViewMode.Edit);
 
-    private void SetPreviewMode(bool visible)
+    private void ToggleReadEdit_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
-        _previewVisible = visible;
-        if (!visible) _previewRenderVersion++;
-        PreviewToggle.IsChecked = visible;
-        if (!visible && _previewExpanded) RestoreSplitLayout();
-        if (!visible)
+        args.Handled = true;
+        ToggleReadEdit();
+    }
+
+    private void ToggleReadEdit() => SetViewMode(_viewMode == ViewMode.Read ? _lastSourceMode : ViewMode.Read);
+
+    private static ViewMode ParseSourceMode(string? value) =>
+        Enum.TryParse(value, ignoreCase: true, out ViewMode mode) && mode != ViewMode.Read ? mode : ViewMode.Split;
+
+    /// <summary>
+    /// The single place that changes what the workspace shows. Choosing Split or Edit remembers it as
+    /// the preferred source view (<paramref name="remember"/>); programmatic switches pass false.
+    /// </summary>
+    private void SetViewMode(ViewMode mode, bool remember = true)
+    {
+        ViewMode previous = _viewMode;
+        if (previous == ViewMode.Split && mode != ViewMode.Split)
         {
+            // Keep the user's dragged split ratio for when they come back to Split.
             _lastEditorWidth = WorkspaceGrid.ColumnDefinitions[1].Width;
             _lastPreviewWidth = WorkspaceGrid.ColumnDefinitions[3].Width;
         }
-        PreviewPane.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        ColumnSplitter.Visibility = visible && !_focusMode ? Visibility.Visible : Visibility.Collapsed;
-        WorkspaceGrid.ColumnDefinitions[3].Width = visible ? _lastPreviewWidth : new GridLength(0);
-        if (visible) _ = RenderPreviewAsync();
+
+        _viewMode = mode;
+        if (mode != ViewMode.Read) _lastSourceMode = mode;
+
+        // Toggle buttons flip their own IsChecked on click; re-assert so exactly one stays checked.
+        ReadModeToggle.IsChecked = mode == ViewMode.Read;
+        SplitModeToggle.IsChecked = mode == ViewMode.Split;
+        EditModeToggle.IsChecked = mode == ViewMode.Edit;
+
+        UpdateAdaptivePanes();
+
+        if (mode != ViewMode.Read && previous == ViewMode.Read)
+            RawEditor.Focus(FocusState.Programmatic);
+
+        if (remember && mode != ViewMode.Read && _settings.SourceMode != mode.ToString())
+        {
+            _settings.SourceMode = mode.ToString();
+            _ = PersistSettingsAsync();
+        }
     }
 
     private void ColumnSplitter_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -580,49 +658,45 @@ public sealed partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void ExpandPreviewButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_previewExpanded) RestoreSplitLayout(); else ExpandPreviewToFullWidth();
-    }
-
-    private void ExpandPreviewToFullWidth()
-    {
-        _previewExpanded = true;
-        _savedEditorWidthBeforeExpand = WorkspaceGrid.ColumnDefinitions[1].Width;
-        _savedPreviewWidthBeforeExpand = WorkspaceGrid.ColumnDefinitions[3].Width;
-        RawEditor.Visibility = Visibility.Collapsed;
-        WelcomePanel.Visibility = Visibility.Collapsed;
-        ColumnSplitter.Visibility = Visibility.Collapsed;
-        OutlinePane.Visibility = Visibility.Collapsed;
-        FormattingPane.Visibility = Visibility.Collapsed;
-        WorkspaceGrid.ColumnDefinitions[1].Width = new GridLength(0);
-        WorkspaceGrid.ColumnDefinitions[3].Width = new GridLength(1, GridUnitType.Star);
-        ExpandPreviewGlyph.Glyph = "\uE73F";
-        ToolTipService.SetToolTip(ExpandPreviewButton, "Restore split view");
-    }
-
-    private void RestoreSplitLayout()
-    {
-        _previewExpanded = false;
-        RawEditor.Visibility = Visibility.Visible;
-        WelcomePanel.Visibility = string.IsNullOrEmpty(RawEditor.Text) ? Visibility.Visible : Visibility.Collapsed;
-        WorkspaceGrid.ColumnDefinitions[1].Width = _savedEditorWidthBeforeExpand;
-        WorkspaceGrid.ColumnDefinitions[3].Width = _savedPreviewWidthBeforeExpand;
-        ExpandPreviewGlyph.Glyph = "\uE740";
-        ToolTipService.SetToolTip(ExpandPreviewButton, "Expand preview");
-        UpdateAdaptivePanes();
-    }
+    private void ExpandPreviewButton_Click(object sender, RoutedEventArgs e) => ToggleReadEdit();
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateAdaptivePanes();
 
+    /// <summary>Derives every pane's visibility and the column widths from the view mode, focus mode and window width.</summary>
     private void UpdateAdaptivePanes()
     {
-        if (_previewExpanded) return;
         double width = RootGrid.ActualWidth;
+        bool editorVisible = _viewMode != ViewMode.Read;
+        // Focus mode is a distraction-free writing mode, so it drops the preview from Split.
+        bool previewVisible = _viewMode == ViewMode.Read || (_viewMode == ViewMode.Split && !_focusMode);
+
+        bool previewWasVisible = _previewVisible;
+        _previewVisible = previewVisible;
+        if (!previewVisible) _previewRenderVersion++; // cancel any in-flight render
+
+        RawEditor.Visibility = editorVisible ? Visibility.Visible : Visibility.Collapsed;
+        WelcomePanel.Visibility = editorVisible && string.IsNullOrEmpty(RawEditor.Text) ? Visibility.Visible : Visibility.Collapsed;
+        PreviewPane.Visibility = previewVisible ? Visibility.Visible : Visibility.Collapsed;
+        ColumnSplitter.Visibility = editorVisible && previewVisible ? Visibility.Visible : Visibility.Collapsed;
         OutlinePane.Visibility = !_focusMode && _settings.OutlineVisible && width >= 980 ? Visibility.Visible : Visibility.Collapsed;
-        FormattingPane.Visibility = !_focusMode && _settings.FormattingVisible && width >= 780 ? Visibility.Visible : Visibility.Collapsed;
-        ColumnSplitter.Visibility = !_focusMode && _previewVisible ? Visibility.Visible : Visibility.Collapsed;
-        PreviewPane.Visibility = _focusMode || !_previewVisible ? Visibility.Collapsed : Visibility.Visible;
+        // Formatting buttons act on the source text, so they're only offered when the source is on screen.
+        FormattingPane.Visibility = editorVisible && !_focusMode && _settings.FormattingVisible && width >= 780 ? Visibility.Visible : Visibility.Collapsed;
+
+        WorkspaceGrid.ColumnDefinitions[1].Width = !editorVisible ? new GridLength(0)
+            : previewVisible ? _lastEditorWidth : new GridLength(1, GridUnitType.Star);
+        WorkspaceGrid.ColumnDefinitions[3].Width = !previewVisible ? new GridLength(0)
+            : editorVisible ? _lastPreviewWidth : new GridLength(1, GridUnitType.Star);
+        // The preview pane draws a left divider for Split; in Read mode it sits flush.
+        PreviewPane.BorderThickness = new Thickness(editorVisible ? 1 : 0, 0, 0, 0);
+
+        bool reading = _viewMode == ViewMode.Read;
+        ExpandPreviewGlyph.Glyph = reading ? "\uE70F" : "\uE740"; // Edit pencil vs. full-screen
+        ExpandPreviewLabel.Text = reading ? "Edit" : "Read";
+        string tip = reading ? "Show Markdown source (Ctrl+E)" : "Read full width (Ctrl+E)";
+        ToolTipService.SetToolTip(ExpandPreviewButton, tip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ExpandPreviewButton, tip);
+
+        if (previewVisible && !previewWasVisible) _ = RenderPreviewAsync();
     }
 
     private void OutlineToggle_Click(object sender, RoutedEventArgs e)
@@ -790,7 +864,7 @@ public sealed partial class MainWindow : Window
             string name = Path.GetFileNameWithoutExtension(_document.CurrentFileName) + ".html";
             string? path = await FileService.PickExportFilePathAsync(this, name, "HTML document", ".html");
             if (path is null) return;
-            await FileService.WriteTextAsync(path, MarkdownRenderService.RenderToHtml(RawEditor.Text, false));
+            await FileService.WriteTextAsync(path, MarkdownRenderService.RenderToHtml(RawEditor.Text, false, standalone: true));
             ShowMessage("Export complete", path, InfoBarSeverity.Success);
         }
         catch (Exception ex) { ShowError("Could not export HTML", ex); }
@@ -818,7 +892,7 @@ public sealed partial class MainWindow : Window
 
     private void CopyHtmlButton_Click(object sender, RoutedEventArgs e)
     {
-        string html = MarkdownRenderService.RenderToHtml(RawEditor.Text, IsDarkTheme());
+        string html = MarkdownRenderService.RenderToHtml(RawEditor.Text, IsDarkTheme(), standalone: true);
         var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
         package.SetText(html);
         package.SetHtmlFormat(HtmlFormatHelper.CreateHtmlFormat(html));
@@ -886,7 +960,11 @@ public sealed partial class MainWindow : Window
         RawEditor.TextWrapping = _settings.WordWrap ? TextWrapping.Wrap : TextWrapping.NoWrap;
         OutlineToggle.IsChecked = _settings.OutlineVisible;
         SetTheme(_settings.Theme);
-        UpdateAdaptivePanes();
+
+        // A file opened by double-click starts in Read (LoadDocumentAsync switches to it). A blank
+        // start has nothing to read yet, so it opens in the user's preferred source view.
+        _lastSourceMode = ParseSourceMode(_settings.SourceMode);
+        SetViewMode(_initialFilePath is null ? _lastSourceMode : ViewMode.Read, remember: false);
     }
 
     private async Task PersistSettingsAsync()

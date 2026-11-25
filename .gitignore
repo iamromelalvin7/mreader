@@ -7,3 +7,5 @@ MDreader/installer/Output/
 *.user
 *.suo
 *.tmp
+.playwright-artifacts/
+.playwright-cli/

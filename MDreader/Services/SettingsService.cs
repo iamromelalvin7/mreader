@@ -16,6 +16,11 @@ public sealed class AppSettings
     public bool WordWrap { get; set; } = true;
     public bool OutlineVisible { get; set; } = true;
     public bool FormattingVisible { get; set; } = true;
+    /// <summary>
+    /// "Split" or "Edit": the source view Ctrl+E / the Edit button switch to. Files always open in Read
+    /// mode (rendered only); this only remembers how the user likes to see the source.
+    /// </summary>
+    public string SourceMode { get; set; } = "Split";
     public string? LastFilePath { get; set; }
 }
 

@@ -11,6 +11,10 @@
     <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
 
     <Grid x:Name="RootGrid" RowDefinitions="Auto,Auto,Auto,*,Auto" SizeChanged="RootGrid_SizeChanged" AllowDrop="True" DragOver="RootGrid_DragOver" Drop="RootGrid_Drop">
+        <Grid.KeyboardAccelerators>
+            <!-- Window-wide so it also works while focus is inside the WebView2 preview. -->
+            <KeyboardAccelerator Key="E" Modifiers="Control" Invoked="ToggleReadEdit_Invoked" />
+        </Grid.KeyboardAccelerators>
         <Grid.Resources>
             <Style x:Key="FormatButtonStyle" TargetType="Button">
                 <Setter Property="Width" Value="42" />
@@ -71,9 +75,17 @@
                 </AppBarButton.Flyout>
             </AppBarButton>
             <AppBarToggleButton x:Name="OutlineToggle" Icon="OutlineStar" Label="Outline" IsChecked="True" Click="OutlineToggle_Click" />
-            <AppBarToggleButton x:Name="PreviewToggle" Icon="View" Label="Preview" IsChecked="True" Click="PreviewToggle_Click">
+            <AppBarSeparator />
+            <!-- View mode: exactly one of these is checked at a time (see SetViewMode). Ctrl+E flips Read <-> Edit. -->
+            <AppBarToggleButton x:Name="ReadModeToggle" Label="Read" Click="ReadModeToggle_Click" ToolTipService.ToolTip="Read: rendered document only (Ctrl+E to switch to Edit)">
+                <AppBarToggleButton.Icon><FontIcon Glyph="&#xE736;" /></AppBarToggleButton.Icon>
+                <AppBarToggleButton.KeyboardAccelerators><KeyboardAccelerator Key="R" Modifiers="Control,Shift" /></AppBarToggleButton.KeyboardAccelerators>
+            </AppBarToggleButton>
+            <AppBarToggleButton x:Name="SplitModeToggle" Icon="TwoPage" Label="Split" Click="SplitModeToggle_Click" ToolTipService.ToolTip="Split: Markdown source and preview side by side (Ctrl+Shift+P)">
                 <AppBarToggleButton.KeyboardAccelerators><KeyboardAccelerator Key="P" Modifiers="Control,Shift" /></AppBarToggleButton.KeyboardAccelerators>
             </AppBarToggleButton>
+            <AppBarToggleButton x:Name="EditModeToggle" Icon="Edit" Label="Edit" Click="EditModeToggle_Click" ToolTipService.ToolTip="Edit: Markdown source only (Ctrl+E to switch to Read)" />
+            <AppBarSeparator />
             <AppBarToggleButton x:Name="FocusModeToggle" Icon="FullScreen" Label="Focus" Click="FocusModeToggle_Click" />
 
             <CommandBar.SecondaryCommands>
@@ -165,10 +177,14 @@
                 <Grid>
                     <WebView2 x:Name="PreviewView" AutomationProperties.Name="Rendered Markdown preview" />
                     <TextBlock x:Name="PreviewUnavailableText" Visibility="Collapsed" TextWrapping="Wrap" Margin="16" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
-                    <Button x:Name="ExpandPreviewButton" Click="ExpandPreviewButton_Click" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="8" CornerRadius="4"
+                    <!-- Corner shortcut: in Split it expands to Read; in Read it returns to the source. -->
+                    <Button x:Name="ExpandPreviewButton" Click="ExpandPreviewButton_Click" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Padding="10,6" CornerRadius="4"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                            ToolTipService.ToolTip="Expand preview" AutomationProperties.Name="Expand preview">
-                        <FontIcon x:Name="ExpandPreviewGlyph" Glyph="&#xE740;" FontSize="14" />
+                            ToolTipService.ToolTip="Read full width" AutomationProperties.Name="Read full width">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon x:Name="ExpandPreviewGlyph" Glyph="&#xE740;" FontSize="14" />
+                            <TextBlock x:Name="ExpandPreviewLabel" Text="Read" VerticalAlignment="Center" />
+                        </StackPanel>
                     </Button>
                 </Grid>
             </Border>

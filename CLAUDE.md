@@ -36,7 +36,7 @@ MDreader/
     MDreader.csproj
     Package.appxmanifest
     App.xaml / App.xaml.cs
-    Assets/                       (app icons only — preview CSS is inlined in MarkdownRenderService, not a separate file)
+    Assets/                       (app icons + katex/ for math; preview CSS is inlined in MarkdownRenderService)
     Views/
       MainWindow.xaml / .xaml.cs  (single window for v1)
     Models/
@@ -87,6 +87,35 @@ Root `Grid` (rows: `Auto`, `*`):
 - `BorderThickness="0"` with a flat background — reads as a borderless "code surface."
 
 **Verification step (do this before writing toolbar code):** type `# Heading` and `## Heading` on consecutive lines and confirm both `#` runs start at the same left edge. This is the direct regression test for the bug that motivated the project.
+
+## View modes (v1.2, current behaviour — supersedes the layout notes above)
+
+The workspace has three mutually exclusive modes, chosen with the **Read / Split / Edit** toggle group in the `CommandBar` (`MainWindow.SetViewMode` is the only place that changes them; `UpdateAdaptivePanes` derives every pane's visibility and column width from the mode):
+
+| Mode | Shows | Notes |
+|---|---|---|
+| **Read** | rendered preview only, full width | Formatting pane hidden (nothing to format). Outline clicks scroll the preview to the Nth `<h1–h6>`. |
+| **Split** | source + preview with the draggable splitter | Splitter ratio is remembered across mode switches. Focus mode drops the preview. |
+| **Edit** | Markdown source only | |
+
+- **Ctrl+E** flips Read ⇄ the last source mode (Split or Edit). It's a window-level `KeyboardAccelerator` *and* a JS keydown listener injected into the WebView2 (`AddScriptToExecuteOnDocumentCreatedAsync` → `postMessage('toggle-read-edit')`), because XAML accelerators don't fire while focus is inside the WebView2. Ctrl+Shift+R = Read, Ctrl+Shift+P = Split.
+- The preview's corner button reads "Read" in Split and "Edit" in Read (same action as Ctrl+E).
+- **Every file load (double-click, Open, Recent, drag-drop) opens in Read.** This is deliberate: an earlier draft remembered the last-used mode, which meant one Ctrl+E into Edit made the next double-click open in source view and look broken. Only the preferred *source* view is remembered: `AppSettings.SourceMode` (`"Split"` default or `"Edit"`) is what Ctrl+E/the Edit button go to. A blank start (no file) or **New** opens in that source view.
+
+## Math rendering (KaTeX, offline)
+
+- **Version:** KaTeX **0.19.1**, from `npm pack katex`. Bundled in `MDreader/Assets/katex/`: `katex.min.js`, `katex.min.css`, `fonts/*.woff2` (woff/ttf fallbacks deliberately left out; WebView2 always takes woff2) and `LICENSE.txt`. No auto-render: the inline script renders Markdig's elements directly. The csproj copies `Assets\katex\**` to the output (`Content` + `PreserveNewest`).
+- **Source:** Markdig's Mathematics extension (part of `UseAdvancedExtensions`) turns `$..$` into `<span class="math">\(..\)</span>` and `$$..$$` into `<div class="math">\[..\]</div>`. `RenderToHtml` adds KaTeX only when the body has `class="math"`.
+- **Serving:** `InitializePreviewAsync` maps a second WebView2 virtual host, `mdreader-assets.local` → `<AppContext.BaseDirectory>\Assets\katex` (`MarkdownRenderService.MathAssetHost`). It is fixed for the app's lifetime and separate from the per-document `mdreader.local` mapping. Pages get `<link>`/`<script nonce>` tags pointing at `https://mdreader-assets.local/…`; the CSS loads the fonts from `fonts/` on the same host. Nothing is inlined into the data URL.
+- **Render + scroll:** the nonce'd inline script strips the `\(`/`\)`/`\[`/`\]` delimiters, calls `katex.render` (`displayMode` for `div.math`, `throwOnError: false`, theme-aware `errorColor`) and adds `.math-rendered`. It restores the scroll ratio only after `document.fonts.ready`, because typesetting and font loading change the page height.
+- **CSP:** without math it is unchanged: `default-src 'none'; img-src data: https: http: file:; style-src 'unsafe-inline'; script-src 'nonce-mdreader'; frame-src 'none'; media-src 'none'; object-src 'none'; base-uri https://mdreader.local; form-action 'none'`. With math it adds the KaTeX origin to `style-src` and `script-src` and adds `font-src <origin>`. The origin is `https://mdreader-assets.local` in the app and `https://cdn.jsdelivr.net` in exports.
+- **Styling/fallback:** KaTeX inherits the theme's text colour. `.katex-display` gets `overflow-x: auto`, so long display math scrolls inside its own box. If KaTeX fails to load, `.math:not(.math-rendered)` shows the raw TeX in monospace on the code surface colour (display math as a pre-wrapped block), so it stays readable.
+- **Export HTML / Copy HTML** call `RenderToHtml(..., standalone: true)`. This references `https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/` with SRI hashes (`integrity` + `crossorigin`), because a standalone file can't reach the virtual host. Online, the math typesets; offline, the raw TeX fallback shows. **When upgrading KaTeX**, replace the files in `Assets/katex`, then update `KatexVersion` and both `sha384` hashes in `MarkdownRenderService` (`openssl dgst -sha384 -binary katex.min.js | openssl base64 -A`).
+- **Headless verification** (never launch the GUI: launching any MDreader.exe re-registers the `.md` association to that exe). `dotnet run --project MDreader.Tests -- --dump-math <sample.md> <outdir>` writes `dark/light/scroll/export.html`. Load them in Playwright as `data:` URLs and `page.route('https://mdreader-assets.local/**')` → `route.fulfill({ path: <Assets/katex> + pathname })`, so the real CSP is exercised. Screenshots go in `.playwright-artifacts/` (gitignored). The unit tests in `MDreader.Tests` also assert the CSP and asset URLs.
+
+## Opening files by double-click
+
+`App.OnLaunched` reads the path from `Environment.GetCommandLineArgs()[1]` (unpackaged apps don't get it via `LaunchActivatedEventArgs`) and `MainWindow` loads it on first activation. The registry command is `"…\MDreader.exe" "%1"` (written by both the installer and `FileAssociationService`). **v1.0.0 did not do this**, so a double-clicked file opened as "Untitled"; fixed from v1.1.0 onward.
 
 ## Formatting toolbar — concrete design
 

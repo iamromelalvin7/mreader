@@ -33,8 +33,45 @@ var tests = new (string Name, Action Run)[]
     {
         const string markdown = "```markdown\n![diagram](assets/my diagram.png)\n```";
         AssertContains("![diagram](assets/my diagram.png)", MarkdownRenderService.RenderToHtml(markdown));
+    }),
+    ("Math loads bundled KaTeX from the asset host", () =>
+    {
+        string html = MarkdownRenderService.RenderToHtml("Delay $d = L/R$\n\n$$\nx^2\n$$");
+        AssertContains("<span class=\"math\">", html);
+        AssertContains("<div class=\"math\">", html);
+        AssertContains("src=\"https://mdreader-assets.local/katex.min.js\"", html);
+        AssertContains("script-src 'nonce-mdreader' https://mdreader-assets.local;", html);
+        AssertContains("font-src https://mdreader-assets.local;", html);
+        AssertContains("style-src 'unsafe-inline' https://mdreader-assets.local;", html);
+    }),
+    ("Exported math uses the pinned CDN with SRI", () =>
+    {
+        string html = MarkdownRenderService.RenderToHtml("$x$", standalone: true);
+        AssertContains($"https://cdn.jsdelivr.net/npm/katex@{MarkdownRenderService.KatexVersion}/dist/katex.min.js\" integrity=\"sha384-", html);
+        AssertContains("font-src https://cdn.jsdelivr.net;", html);
+        if (html.Contains("mdreader-assets.local")) throw new InvalidOperationException("Export must not reference the in-app asset host");
+    }),
+    ("No math keeps the original tight CSP", () =>
+    {
+        string html = MarkdownRenderService.RenderToHtml("# Plain");
+        AssertContains("style-src 'unsafe-inline'; script-src 'nonce-mdreader'; frame-src", html);
+        if (html.Contains("katex.min")) throw new InvalidOperationException("KaTeX should not load without math");
     })
 };
+
+// Harness: `dotnet run -- --dump-math <input.md> <out-dir>` writes the preview HTML (dark,
+// light, standalone) for headless browser checks. See CLAUDE.md "Math rendering".
+if (args.Length == 3 && args[0] == "--dump-math")
+{
+    string md = File.ReadAllText(args[1]);
+    Directory.CreateDirectory(args[2]);
+    File.WriteAllText(Path.Combine(args[2], "dark.html"), MarkdownRenderService.RenderToHtml(md, darkTheme: true));
+    File.WriteAllText(Path.Combine(args[2], "light.html"), MarkdownRenderService.RenderToHtml(md, darkTheme: false));
+    File.WriteAllText(Path.Combine(args[2], "scroll.html"), MarkdownRenderService.RenderToHtml(md, scrollRatio: 0.5));
+    File.WriteAllText(Path.Combine(args[2], "export.html"), MarkdownRenderService.RenderToHtml(md, standalone: true));
+    Console.WriteLine($"Wrote HTML to {args[2]}");
+    return 0;
+}
 
 int failed = 0;
 foreach (var test in tests)
