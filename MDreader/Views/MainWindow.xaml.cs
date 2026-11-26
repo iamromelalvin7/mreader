@@ -41,6 +41,7 @@ public sealed partial class MainWindow : Window
     // Derived from _viewMode/_focusMode in UpdateAdaptivePanes; gates preview rendering work.
     private bool _previewVisible = true;
     private bool _focusMode;
+    private bool _outlineOverlayOpen; // slide-over outline on narrow windows; see UpdateOutlinePane
     private bool _allowClose;
     private bool _closeDialogOpen;
     private bool _isDraggingSplitter;
@@ -321,13 +322,20 @@ public sealed partial class MainWindow : Window
         OutlineList.ItemsSource = _headings;
     }
 
-    private void OutlineList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OutlineList_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (OutlineList.SelectedItem is not HeadingInfo heading) return;
+        if (e.ClickedItem is not HeadingInfo heading) return;
+        int index = -1;
+        for (int i = 0; i < _headings.Count; i++)
+            if (ReferenceEquals(_headings[i], heading)) { index = i; break; }
+
+        // A slide-over outline gets out of the way once you've picked where to go.
+        CloseOutlineOverlay();
+
         if (_viewMode == ViewMode.Read)
         {
             // No caret to move in Read mode: scroll the rendered page to the matching heading instead.
-            ScrollPreviewToHeading(OutlineList.SelectedIndex);
+            ScrollPreviewToHeading(index);
             return;
         }
         RawEditor.SelectionStart = Math.Min(heading.CharacterIndex, RawEditor.Text.Length);
@@ -678,7 +686,7 @@ public sealed partial class MainWindow : Window
         WelcomePanel.Visibility = editorVisible && string.IsNullOrEmpty(RawEditor.Text) ? Visibility.Visible : Visibility.Collapsed;
         PreviewPane.Visibility = previewVisible ? Visibility.Visible : Visibility.Collapsed;
         ColumnSplitter.Visibility = editorVisible && previewVisible ? Visibility.Visible : Visibility.Collapsed;
-        OutlinePane.Visibility = !_focusMode && _settings.OutlineVisible && width >= 980 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateOutlinePane();
         // Formatting buttons act on the source text, so they're only offered when the source is on screen.
         FormattingPane.Visibility = editorVisible && !_focusMode && _settings.FormattingVisible && width >= 780 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -702,11 +710,60 @@ public sealed partial class MainWindow : Window
         if (previewVisible && !previewWasVisible) _ = RenderPreviewAsync();
     }
 
+    // Below this width (about half a 1920px screen) there isn't room to dock the outline beside the
+    // document, so it slides over the content instead.
+    private const double OutlineDockMinWidth = 980;
+
+    /// <summary>True when the outline is shown as a slide-over panel rather than a docked column.</summary>
+    private bool IsOutlineOverlayMode => _focusMode || RootGrid.ActualWidth < OutlineDockMinWidth;
+
+    /// <summary>
+    /// Docked mode follows the persisted preference (<c>_settings.OutlineVisible</c>). Overlay mode uses a
+    /// transient flag that always starts closed, so a narrow window never opens with the document covered.
+    /// </summary>
+    private void UpdateOutlinePane()
+    {
+        bool overlay = IsOutlineOverlayMode;
+        if (!overlay) _outlineOverlayOpen = false;
+        bool shown = overlay ? _outlineOverlayOpen : _settings.OutlineVisible;
+
+        OutlinePane.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        // Overlay: lift it out of its Auto column and float it over the editor/preview columns.
+        Grid.SetColumn(OutlinePane, overlay ? 1 : 0);
+        Grid.SetColumnSpan(OutlinePane, overlay ? 4 : 1);
+        OutlinePane.HorizontalAlignment = overlay ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
+        Canvas.SetZIndex(OutlinePane, overlay ? 10 : 0);
+        OutlineToggle.IsChecked = shown;
+    }
+
     private void OutlineToggle_Click(object sender, RoutedEventArgs e)
     {
-        _settings.OutlineVisible = OutlineToggle.IsChecked == true;
-        UpdateAdaptivePanes();
-        _ = PersistSettingsAsync();
+        bool show = OutlineToggle.IsChecked == true;
+        if (IsOutlineOverlayMode)
+        {
+            _outlineOverlayOpen = show;
+        }
+        else
+        {
+            _settings.OutlineVisible = show;
+            _ = PersistSettingsAsync();
+        }
+        UpdateOutlinePane();
+        if (show && IsOutlineOverlayMode) OutlineList.Focus(FocusState.Programmatic); // so Esc closes it
+    }
+
+    private void CloseOutlineOverlay()
+    {
+        if (!IsOutlineOverlayMode || !_outlineOverlayOpen) return;
+        _outlineOverlayOpen = false;
+        UpdateOutlinePane();
+    }
+
+    private void OutlinePane_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Escape || !IsOutlineOverlayMode) return;
+        CloseOutlineOverlay();
+        e.Handled = true;
     }
 
     private void FocusModeToggle_Click(object sender, RoutedEventArgs e)
@@ -961,7 +1018,6 @@ public sealed partial class MainWindow : Window
         RawEditor.FontSize = Math.Clamp(_settings.EditorFontSize, 10, 28);
         WordWrapToggle.IsChecked = _settings.WordWrap;
         RawEditor.TextWrapping = _settings.WordWrap ? TextWrapping.Wrap : TextWrapping.NoWrap;
-        OutlineToggle.IsChecked = _settings.OutlineVisible;
         SetTheme(_settings.Theme);
 
         // A file opened by double-click starts in Read (LoadDocumentAsync switches to it). A blank

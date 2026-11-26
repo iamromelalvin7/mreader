@@ -35,6 +35,19 @@
         </Grid.Resources>
 
         <CommandBar Grid.Row="0" HorizontalAlignment="Stretch" DefaultLabelPosition="Right">
+            <!-- CommandBar.Content sits at the left and never moves into the overflow menu, so the
+                 outline toggle stays reachable at any window width (half-screen included). -->
+            <CommandBar.Content>
+                <ToggleButton x:Name="OutlineToggle" IsChecked="True" Click="OutlineToggle_Click" Margin="8,6,0,6" Padding="10,6"
+                              Background="Transparent" BorderThickness="0"
+                              ToolTipService.ToolTip="Show or hide the outline (Ctrl+Shift+O)" AutomationProperties.Name="Outline">
+                    <ToggleButton.KeyboardAccelerators><KeyboardAccelerator Key="O" Modifiers="Control,Shift" /></ToggleButton.KeyboardAccelerators>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE700;" FontSize="16" />
+                        <TextBlock Text="Outline" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ToggleButton>
+            </CommandBar.Content>
             <AppBarButton x:Name="NewButton" Icon="Document" Label="New" Click="NewButton_Click">
                 <AppBarButton.KeyboardAccelerators><KeyboardAccelerator Key="N" Modifiers="Control" /></AppBarButton.KeyboardAccelerators>
             </AppBarButton>
@@ -77,7 +90,6 @@
                     </MenuFlyout>
                 </AppBarButton.Flyout>
             </AppBarButton>
-            <AppBarToggleButton x:Name="OutlineToggle" Icon="OutlineStar" Label="Outline" IsChecked="True" Click="OutlineToggle_Click" />
             <AppBarSeparator />
             <!-- View mode: exactly one of these is checked at a time (see SetViewMode). Ctrl+E flips Read <-> Edit. -->
             <AppBarToggleButton x:Name="ReadModeToggle" Label="Read" Click="ReadModeToggle_Click" ToolTipService.ToolTip="Read: rendered document only (Ctrl+E to switch to Edit)">
@@ -135,10 +147,15 @@
         <InfoBar x:Name="NotificationBar" Grid.Row="2" IsOpen="False" IsClosable="True" Margin="8,4" />
 
         <Grid x:Name="WorkspaceGrid" Grid.Row="3" ColumnDefinitions="Auto,*,Auto,*,Auto">
-            <Border x:Name="OutlinePane" Grid.Column="0" Width="220" BorderThickness="0,0,1,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <!-- Docked in column 0 on wide windows; on narrow windows/Focus mode UpdateAdaptivePanes
+                 re-parents it over the content (column 1, span 4, high Z) as a slide-over panel.
+                 Opaque background so the document doesn't show through when it overlays. -->
+            <Border x:Name="OutlinePane" Grid.Column="0" Width="240" BorderThickness="0,0,1,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}" KeyDown="OutlinePane_KeyDown">
                 <Grid RowDefinitions="Auto,*" Padding="8">
                     <TextBlock Text="DOCUMENT OUTLINE" Style="{StaticResource CaptionTextBlockStyle}" Margin="8,4,8,8" />
-                    <ListView x:Name="OutlineList" Grid.Row="1" SelectionChanged="OutlineList_SelectionChanged" AutomationProperties.Name="Document headings">
+                    <!-- ItemClick (not SelectionChanged) so clicking the same heading twice still jumps. -->
+                    <ListView x:Name="OutlineList" Grid.Row="1" SelectionMode="None" IsItemClickEnabled="True" ItemClick="OutlineList_ItemClick" AutomationProperties.Name="Document headings">
                         <ListView.ItemTemplate>
                             <DataTemplate><TextBlock Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Text}" /></DataTemplate>
                         </ListView.ItemTemplate>

@@ -7,7 +7,8 @@ namespace MDreader.Services;
 
 public sealed record HeadingInfo(int Level, string Text, int CharacterIndex, int LineNumber)
 {
-    public string DisplayText => $"{new string(' ', Math.Max(0, Level - 1) * 2)}{Text}";
+    // The outline is plain text, so drop the $ math delimiters ("Comparison ($n$ = devices)" -> "Comparison (n = devices)").
+    public string DisplayText => $"{new string(' ', Math.Max(0, Level - 1) * 2)}{Text.Replace("$", string.Empty)}";
 }
 
 public static partial class MarkdownDocumentService
