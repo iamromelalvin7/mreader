@@ -40,7 +40,7 @@ var tests = new (string Name, Action Run)[]
         AssertContains("<span class=\"math\">", html);
         AssertContains("<div class=\"math\">", html);
         AssertContains("src=\"https://mdreader-assets.local/katex.min.js\"", html);
-        AssertContains("script-src 'nonce-mdreader' https://mdreader-assets.local;", html);
+        AssertMatches(@"script-src 'nonce-[0-9A-F]{32}' https://mdreader-assets\.local;", html);
         AssertContains("font-src https://mdreader-assets.local;", html);
         AssertContains("style-src 'unsafe-inline' https://mdreader-assets.local;", html);
     }),
@@ -51,10 +51,23 @@ var tests = new (string Name, Action Run)[]
         AssertContains("font-src https://cdn.jsdelivr.net;", html);
         if (html.Contains("mdreader-assets.local")) throw new InvalidOperationException("Export must not reference the in-app asset host");
     }),
+    ("Raw HTML like <details> renders", () =>
+    {
+        string html = MarkdownRenderService.RenderToHtml("<details>\n<summary><b>Answers</b></summary>\n\nA switch.\n\n</details>");
+        AssertContains("<details>\n<summary><b>Answers</b></summary>", html);
+        AssertContains("<p>A switch.</p>", html);
+    }),
+    ("Raw HTML cannot add scripts, frames or forms", () =>
+    {
+        string html = MarkdownRenderService.RenderToHtml("<script nonce=\"mdreader\">alert(1)</script>\n\n<iframe src=\"https://x\"></iframe> <form></form> <meta http-equiv=\"refresh\">");
+        foreach (string bad in new[] { "<script nonce=\"mdreader\">alert", "<iframe", "<form", "<meta http-equiv=\"refresh" })
+            if (html.Contains(bad)) throw new InvalidOperationException($"Unsafe tag survived: {bad}");
+        AssertContains("&lt;iframe", html);
+    }),
     ("No math keeps the original tight CSP", () =>
     {
         string html = MarkdownRenderService.RenderToHtml("# Plain");
-        AssertContains("style-src 'unsafe-inline'; script-src 'nonce-mdreader'; frame-src", html);
+        AssertMatches(@"style-src 'unsafe-inline'; script-src 'nonce-[0-9A-F]{32}'; frame-src", html);
         if (html.Contains("katex.min")) throw new InvalidOperationException("KaTeX should not load without math");
     })
 };
@@ -99,4 +112,10 @@ static void AssertContains(string expected, string actual)
 {
     if (!actual.Contains(expected, StringComparison.Ordinal))
         throw new InvalidOperationException($"Expected to find [{expected}]");
+}
+
+static void AssertMatches(string pattern, string actual)
+{
+    if (!System.Text.RegularExpressions.Regex.IsMatch(actual, pattern))
+        throw new InvalidOperationException($"Expected to match [{pattern}]");
 }

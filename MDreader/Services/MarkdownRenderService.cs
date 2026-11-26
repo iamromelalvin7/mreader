@@ -1,4 +1,5 @@
 using System;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Markdig;
@@ -17,8 +18,14 @@ public static class MarkdownRenderService
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
         .UseYamlFrontMatter()
-        .DisableHtml()
         .Build();
+
+    // Raw HTML in notes (<details>, <kbd>, <sub>, <br>, ...) renders. Tags that could run code,
+    // load other pages or submit data are shown as text instead. Defence in depth: the CSP
+    // also blocks every script without this render's random nonce.
+    private static readonly Regex UnsafeHtmlTag = new(
+        @"<(?=/?\s*(?:script|iframe|frame|frameset|object|embed|applet|form|base|meta|link|noscript|template|portal)\b)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     // KaTeX (bundled under Assets/katex, see CLAUDE.md "Math rendering"). Keep the version,
     // the jsDelivr URL and the SRI hashes in sync when updating the bundled files.
@@ -45,6 +52,9 @@ public static class MarkdownRenderService
         string body = Markdown.ToHtml(tokenized, Pipeline)
             .Replace(underlineOpenToken, "<u>", StringComparison.Ordinal)
             .Replace(underlineCloseToken, "</u>", StringComparison.Ordinal);
+        body = UnsafeHtmlTag.Replace(body, "&lt;");
+        // Per-render nonce: a document can't guess it, so raw HTML can never add a script.
+        string nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
 
         string background = darkTheme ? "#202020" : "#ffffff";
         string surface = darkTheme ? "#2b2b2b" : "#f5f5f5";
@@ -71,7 +81,7 @@ public static class MarkdownRenderService
             string jsSri = standalone ? $" integrity=\"{KatexJsIntegrity}\" crossorigin=\"anonymous\"" : string.Empty;
             katexHead = $"<link rel=\"stylesheet\" href=\"{katexBase}katex.min.css\"{cssSri} />";
             // Synchronous on purpose: the inline script below must run after KaTeX is defined.
-            katexScript = $"<script nonce=\"mdreader\" src=\"{katexBase}katex.min.js\"{jsSri}></script>";
+            katexScript = $"<script nonce=\"{nonce}\" src=\"{katexBase}katex.min.js\"{jsSri}></script>";
         }
 
         return $$"""
@@ -81,7 +91,7 @@ public static class MarkdownRenderService
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
                 {{baseElement}}
-                <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http: file:; style-src 'unsafe-inline'{{mathCsp}}; script-src 'nonce-mdreader'{{mathCsp}};{{fontCsp}} frame-src 'none'; media-src 'none'; object-src 'none'; base-uri https://mdreader.local; form-action 'none'" />
+                <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http: file:; style-src 'unsafe-inline'{{mathCsp}}; script-src 'nonce-{{nonce}}'{{mathCsp}};{{fontCsp}} frame-src 'none'; media-src 'none'; object-src 'none'; base-uri https://mdreader.local; form-action 'none'" />
                 {{katexHead}}
                 <style>
                     :root { color-scheme: {{(darkTheme ? "dark" : "light")}}; }
@@ -105,6 +115,10 @@ public static class MarkdownRenderService
                     th { background: {{surface}}; }
                     img { max-width: 100%; height: auto; border-radius: 6px; }
                     hr { border: 0; border-top: 1px solid {{border}}; margin: 2em 0; }
+                    details { border: 1px solid {{border}}; border-radius: 6px; padding: 8px 14px; margin: 0 0 1em; }
+                    details[open] > summary { margin-bottom: .6em; }
+                    summary { cursor: pointer; font-weight: 600; }
+                    kbd { font-family: "Cascadia Mono", Consolas, monospace; font-size: .85em; background: {{surface}}; border: 1px solid {{border}}; border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; }
                     input[type=checkbox] { accent-color: {{link}}; }
                     .math:not(.math-rendered) { font-family: "Cascadia Mono", Consolas, monospace; font-size: .92em; background: {{surface}}; border-radius: 4px; padding: 1px 4px; }
                     div.math:not(.math-rendered) { display: block; white-space: pre-wrap; padding: 10px 14px; margin: 0 0 1em; border: 1px solid {{border}}; }
@@ -119,7 +133,7 @@ public static class MarkdownRenderService
             <body>
             {{body}}
             {{katexScript}}
-            <script nonce="mdreader">
+            <script nonce="{{nonce}}">
             (() => {
                 const restoreScroll = () => requestAnimationFrame(() => window.scrollTo(0, {{safeRatio.ToString(System.Globalization.CultureInfo.InvariantCulture)}} * Math.max(0, document.documentElement.scrollHeight - innerHeight)));
                 const math = document.querySelectorAll('span.math, div.math');
